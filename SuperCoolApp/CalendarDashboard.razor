@@ -1,0 +1,179 @@
+﻿@using RazorConsole.Components
+@using SuperCoolApp.Services
+@using Google.Apis.Calendar.v3.Data
+@using System.IO
+@using Spectre.Console
+@using Markup = Spectre.Console.Markup
+
+<Columns>
+    <p>PC name:</p>
+    <Markup Content="@_pcName" Foreground="@Color.Red"/>
+    <p>       Date and Time of refresh:</p>
+    <Markup Content="@_dateTimeNow" Foreground="@Color.Red"/>
+</Columns>
+
+<Columns>
+    <Markup Content="╔═══════════════════════════════════════════════════════════════════════╗" Foreground="@Color.Green" />
+</Columns>
+<Columns>
+    <Markup Content="║" Foreground="@Color.Green" />
+    <Markup Content="@PadCenter("TODAY'S EVENTS", BoxInnerWidth)" Foreground="@Color.Green"/>
+    <Markup Content="║" Foreground="@Color.Green" />
+</Columns>
+<Columns>
+    <Markup Content="╚═══════════════════════════════════════════════════════════════════════╝" Foreground="@Color.Green" />
+</Columns>
+
+<Columns>
+    <Markup Content="╔═══════════════════════════════════════════════════════════════════════╗" Foreground="@Color.Green" />
+</Columns>
+@{ 
+    if (_buckets.Count > 0)
+    {
+        for (var bi = 0; bi < _buckets.Count; bi++)
+        {
+            var b = _buckets[bi];
+
+            if (_perBucketCalendars != null && _perBucketCalendars.Count > bi && _perBucketCalendars[bi].Count > 0)
+            {
+                foreach (var calEntry in _perBucketCalendars[bi])
+                {
+                    <Columns>
+                        <Markup Content="║" Foreground="@Color.Green" />
+                        <Markup Content="@PadCenter(calEntry.Title, BoxInnerWidth)" Foreground="@Color.Cyan1" />
+                        <Markup Content="║" Foreground="@Color.Green" />
+                     </Columns>
+
+                    if (calEntry.Events.Count > 0)
+                    {
+                        foreach (var e in calEntry.Events)
+                        {
+                            <Columns>
+                                <Markup Content="║" Foreground="@Color.Green" />
+                                <Markup Content="@PadCenter(Markup.Escape($"{e.Summary ?? "(no title)"}  -  {(e.Start?.DateTimeDateTimeOffset?.ToLocalTime().ToString("HH:mm") ?? e.Start?.Date ?? "")}-{(e.End?.DateTimeDateTimeOffset?.ToLocalTime().ToString("HH:mm") ?? e.End?.Date ?? "")}"), BoxInnerWidth)" Foreground="@Color.Wheat1" />
+                                <Markup Content="║" Foreground="@Color.Green" />
+                            </Columns>
+                        }
+                    }
+                    else
+                    {
+                        <Columns>
+                            <Markup Content="║" Foreground="@Color.Green" />
+                            <Markup Content="@PadCenter("(no events)", BoxInnerWidth)" Foreground="@Color.Grey" />
+                            <Markup Content="║" Foreground="@Color.Green" />
+                        </Columns>
+                    }
+                }
+            }
+        }
+    }
+    else
+    {
+        <Markup Content="No events found or calendar not configured." Foreground="@Color.Grey" />
+    }
+    <Columns>
+        <Markup Content="╚═══════════════════════════════════════════════════════════════════════╝" Foreground="@Color.Green" />
+    </Columns>
+}
+
+@code {
+    private readonly string _pcName = System.Net.Dns.GetHostName();
+    private string _dateTimeNow = DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss");
+    private class CalendarBucket { public string Owner = "(unknown)"; public IList<Event> Events = new List<Event>(); public string? CredentialPath; }
+    private readonly List<CalendarBucket> _buckets = [];
+    private readonly List<List<(string Title, IList<Event> Events)>> _perBucketCalendars = [];
+
+    private const int BoxInnerWidth = 69;
+
+    private static string PadRight(string? s, int width)
+    {
+        s ??= string.Empty;
+        if (s.Length > width) return s.Substring(0, Math.Max(0, width - 1)) + "…";
+        return s.PadRight(width);
+    }
+
+    private static string PadLeft(string? s, int width)
+    {
+        s ??= string.Empty;
+        if (s.Length > width) return "…" + s.Substring(s.Length - (width - 1));
+        return s.PadLeft(width);
+    }
+
+    private static string PadCenter(string? s, int width)
+    {
+        s ??= string.Empty;
+        if (s.Length >= width) return s.Substring(0, Math.Max(0, width - 1)) + "…";
+        var totalPad = width - s.Length;
+        var left = totalPad / 2 + s.Length;
+        return s.PadLeft(left).PadRight(width);
+    }
+
+    private Timer? _refreshTimer;
+    private readonly TimeSpan _refreshInterval = TimeSpan.FromMinutes(1);
+    private int _isRefreshing;
+
+    public CalendarDashboard()
+    {
+        var baseDir = AppContext.BaseDirectory;
+
+        var credPath1 = Path.Combine(baseDir, "ApiCredentials.txt");
+
+        if (!string.IsNullOrEmpty(credPath1))
+        {
+            var svc = new GoogleCalendarService(credPath1);
+            _buckets.Add(new CalendarBucket { Owner = svc.UserEmail ?? "(unknown)", Events = new List<Event>(), CredentialPath = credPath1 });
+            _perBucketCalendars.Add(new List<(string, IList<Event>)>());
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+        _refreshTimer = new Timer(_ => _ = RefreshAsync(), null, _refreshInterval, _refreshInterval);
+    }
+
+    private async Task RefreshAsync()
+    {
+        _dateTimeNow = DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss");
+        if (Interlocked.Exchange(ref _isRefreshing, 1) == 1) return;
+        try
+        {
+            for (var i = 0; i < _buckets.Count; i++)
+            {
+                var b = _buckets[i];
+                try
+                {
+                    GoogleCalendarService svc;
+                    if (!string.IsNullOrEmpty(b.CredentialPath) && File.Exists(b.CredentialPath)) svc = new GoogleCalendarService(b.CredentialPath);
+                    else svc = new GoogleCalendarService();
+
+                    var perCal = await svc.GetTodaysEventsAllCalendarsAsync();
+                    var calendarEntries = new List<(string Title, IList<Event> Events)>();
+                    foreach (var (cal, events) in perCal)
+                    {
+                        calendarEntries.Add((cal.Summary ?? cal.Id, events));
+                    }
+
+                    b.Events = perCal.SelectMany(x => x.Events).ToList();
+                    b.Owner = svc.UserEmail ?? b.Owner;
+                    if (_perBucketCalendars.Count > i) _perBucketCalendars[i] = calendarEntries; else _perBucketCalendars.Add(calendarEntries);
+                }
+                catch
+                {
+                    b.Events = new List<Event>();
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isRefreshing, 0);
+        }
+    }
+
+    public void Dispose()
+    {
+        try { _refreshTimer?.Dispose(); } catch { }
+    }
+}
