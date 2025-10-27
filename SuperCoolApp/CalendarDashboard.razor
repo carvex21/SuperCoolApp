@@ -2,79 +2,86 @@
 @using SuperCoolApp.Services
 @using Google.Apis.Calendar.v3.Data
 @using System.IO
+@using System.Text.RegularExpressions
 @using Spectre.Console
 @using Markup = Spectre.Console.Markup
 
+ 
 <Columns>
     <p>PC name:</p>
     <Markup Content="@_pcName" Foreground="@Color.Red"/>
-    <p>       Date and Time of refresh:</p>
+    <p>     Date and Time of refresh:</p>
     <Markup Content="@_dateTimeNow" Foreground="@Color.Red"/>
 </Columns>
 
-<Columns>
-    <Markup Content="╔═══════════════════════════════════════════════════════════════════════╗" Foreground="@Color.Green" />
-</Columns>
-<Columns>
-    <Markup Content="║" Foreground="@Color.Green" />
-    <Markup Content="@PadCenter("TODAY'S EVENTS", BoxInnerWidth)" Foreground="@Color.Green"/>
-    <Markup Content="║" Foreground="@Color.Green" />
-</Columns>
-<Columns>
-    <Markup Content="╚═══════════════════════════════════════════════════════════════════════╝" Foreground="@Color.Green" />
-</Columns>
 
+@*the body*@
 <Columns>
-    <Markup Content="╔═══════════════════════════════════════════════════════════════════════╗" Foreground="@Color.Green" />
-</Columns>
-@{ 
-    if (_buckets.Count > 0)
-    {
-        for (var bi = 0; bi < _buckets.Count; bi++)
+    <!-- LEFT: EVENTS -->
+    <div>
+        @* Top *@
+        <Markup Content="@($"╔{new string('═', BoxInnerWidth)}╗")" Foreground="@Color.Red" />
+        @* Title *@
+        <Columns>
+            <Markup Content="║" Foreground="@Color.Red" />
+            <Markup Content='@PadCenter("TODAY\'S EVENTS", InnerWidth(BoxInnerWidth))' Foreground='@Color.Blue' />
+            <Markup Content="║" Foreground="@Color.Red" />
+        </Columns>
+        @* Separator & inner top *@
+        <Markup Content="@($"╚{new string('═', BoxInnerWidth)}╝")" Foreground="@Color.Red" />
+        <Markup Content="@($"╔{new string('═', BoxInnerWidth)}╗")" Foreground="@Color.Red" />
+
+        @* Body *@
+        @foreach (var line in BuildEventLines())
         {
-            var b = _buckets[bi];
-
-            if (_perBucketCalendars != null && _perBucketCalendars.Count > bi && _perBucketCalendars[bi].Count > 0)
-            {
-                foreach (var calEntry in _perBucketCalendars[bi])
-                {
-                    <Columns>
-                        <Markup Content="║" Foreground="@Color.Green" />
-                        <Markup Content="@PadCenter(calEntry.Title, BoxInnerWidth)" Foreground="@Color.Cyan1" />
-                        <Markup Content="║" Foreground="@Color.Green" />
-                     </Columns>
-
-                    if (calEntry.Events.Count > 0)
-                    {
-                        foreach (var e in calEntry.Events)
-                        {
-                            <Columns>
-                                <Markup Content="║" Foreground="@Color.Green" />
-                                <Markup Content="@PadCenter(Markup.Escape($"{e.Summary ?? "(no title)"}  -  {(e.Start?.DateTimeDateTimeOffset?.ToLocalTime().ToString("HH:mm") ?? e.Start?.Date ?? "")}-{(e.End?.DateTimeDateTimeOffset?.ToLocalTime().ToString("HH:mm") ?? e.End?.Date ?? "")}"), BoxInnerWidth)" Foreground="@Color.Wheat1" />
-                                <Markup Content="║" Foreground="@Color.Green" />
-                            </Columns>
-                        }
-                    }
-                    else
-                    {
-                        <Columns>
-                            <Markup Content="║" Foreground="@Color.Green" />
-                            <Markup Content="@PadCenter("(no events)", BoxInnerWidth)" Foreground="@Color.Grey" />
-                            <Markup Content="║" Foreground="@Color.Green" />
-                        </Columns>
-                    }
-                }
-            }
+            <Columns>
+                <Markup Content="║" Foreground="@Color.Red" />
+                <Markup Content='@PadCenter(line, InnerWidth(BoxInnerWidth))' Foreground='@Color.White' />
+                <Markup Content="║" Foreground="@Color.Red" />
+            </Columns>
         }
-    }
-    else
-    {
-        <Markup Content="No events found or calendar not configured." Foreground="@Color.Grey" />
-    }
-    <Columns>
-        <Markup Content="╚═══════════════════════════════════════════════════════════════════════╝" Foreground="@Color.Green" />
-    </Columns>
-}
+
+        @* Bottom *@
+        <Markup Content="@($"╚{new string('═', BoxInnerWidth)}╝")" Foreground="@Color.Red" />
+    </div>
+
+    <Markup Content="     " Foreground="@Color.Green" />
+
+    <!-- RIGHT: WEATHER -->
+    <div>
+        @* Top *@
+        <Markup Content="@($"╔{new string('═', BoxInnerWidth)}╗")" Foreground="@Color.Green" />
+        @* Title *@
+        <Columns>
+            <Markup Content="║" Foreground="@Color.Green" />
+            <Markup Content='@PadCenter("THE WEATHER FORECAST", InnerWidth(BoxInnerWidth))' Foreground='@Color.Yellow' />
+            <Markup Content="║" Foreground="@Color.Green" />
+        </Columns>
+        @* Separator & inner top *@
+        <Markup Content="@($"╚{new string('═', BoxInnerWidth)}╝")" Foreground="@Color.Green" />
+        <Markup Content="@($"╔{new string('═', BoxInnerWidth)}╗")" Foreground="@Color.Green" />
+
+        @* Body *@
+        @foreach (var line in BuildWeatherLines())
+        {
+            <Columns>
+                <Markup Content="║" Foreground="@Color.Green" />
+                <Markup Content='@PadCenter(line, InnerWidth(BoxInnerWidth))' Foreground='@Color.White' />
+                <Markup Content="║" Foreground="@Color.Green" />
+            </Columns>
+        }
+        @* Bottom *@
+        <Markup Content="@($"╚{new string('═', BoxInnerWidth)}╝")" Foreground="@Color.Green" />
+    </div>
+</Columns>
+
+
+
+
+
+
+
+
 
 @code {
     private readonly string _pcName = System.Net.Dns.GetHostName();
@@ -82,21 +89,163 @@
     private class CalendarBucket { public string Owner = "(unknown)"; public IList<Event> Events = new List<Event>(); public string? CredentialPath; }
     private readonly List<CalendarBucket> _buckets = [];
     private readonly List<List<(string Title, IList<Event> Events)>> _perBucketCalendars = [];
-
+    private readonly WeatherService _weatherService = new();
+    
     private const int BoxInnerWidth = 69;
+    
+    private const int ColumnsGutter = 1;
+    private static int InnerWidth(int outerWidth) => Math.Max(0, outerWidth - (ColumnsGutter * 2));
 
-    private static string PadRight(string? s, int width)
+    private Timer? _refreshTimer;
+    private readonly TimeSpan _refreshInterval = TimeSpan.FromMinutes(1);
+    private int _isRefreshing;
+
+    private readonly (string Name, double Lat, double Lon)[] _cities =
     {
-        s ??= string.Empty;
-        if (s.Length > width) return s.Substring(0, Math.Max(0, width - 1)) + "…";
-        return s.PadRight(width);
+        ("Rotterdam, The Netherlands", 51.9244, 4.4777),
+        ("Xanthi, Greece", 41.1362, 24.8880),
+        ("Athens, Greece", 37.9838, 23.7275),
+    };
+    private readonly Dictionary<string, WeatherForecast?> _cityForecasts = new();
+
+    private const int ForecastDaysWx = 3;
+    
+    private string _eventsBox = string.Empty;
+    private string _weatherBox = string.Empty;
+
+    private string BuildBox(string title, IEnumerable<string> bodyLines, string frameColor, string titleColor, string bodyColor)
+    {
+        var w = BoxInnerWidth;
+        string Frame(string s) => $"[{frameColor}]{s}[/]";
+        string Title(string s) => $"[{titleColor}]{s}[/]";
+        string Body(string s)  => $"[{bodyColor}]{s}[/]";
+
+
+        var sb = new System.Text.StringBuilder();
+        // top frame
+        sb.AppendLine(Frame("╔" + new string('═', w) + "╗"));
+        // title line
+        sb.AppendLine(Frame("║") + PadCenterMarkup(Title(title), w) + Frame("║"));
+        // separator
+        sb.AppendLine(Frame("╚" + new string('═', w) + "╝"));
+        // optional top line before body
+        sb.AppendLine(Frame("╔" + new string('═', w) + "╗"));
+
+        foreach (var line in bodyLines)
+            sb.AppendLine(Frame("║") + PadCenterMarkup(Body(line), w) + Frame("║"));
+
+        sb.Append("╚" + new string('═', w) + "╝");
+        return sb.ToString();
+    }
+    
+    private static string CenterExact(string s, int width)
+    {
+        if (s == null) s = string.Empty;
+        if (s.Length == width) return s;
+        if (s.Length > width) return s[..width];
+        var pad = width - s.Length;
+        var left = pad / 2;
+        return new string(' ', left) + s + new string(' ', pad - left);
     }
 
-    private static string PadLeft(string? s, int width)
+    private static string PadCenterMarkup(string? s, int width)
     {
         s ??= string.Empty;
-        if (s.Length > width) return "…" + s.Substring(s.Length - (width - 1));
-        return s.PadLeft(width);
+        var len = VisibleLength(s);
+        if (len >= width) return s;
+        var pad = width - len;
+        var left = pad / 2;
+        return new string(' ', left) + s + new string(' ', pad - left);
+    }
+    
+    private static int VisibleLength(string? s) =>
+        MarkupTagRegex.Replace(s ?? string.Empty, string.Empty).Length;
+    
+    private static readonly Regex MarkupTagRegex =
+        new(@"\[(?:/?[^\]]+)\]", RegexOptions.Compiled);
+    
+    private IEnumerable<string> BuildEventLines()
+    {
+        if (_perBucketCalendars is null || _perBucketCalendars.Count == 0)
+        {
+            yield return "(no events found or calendar not configured)";
+            yield break;
+        }
+
+        foreach (var calList in _perBucketCalendars)
+        {
+            foreach (var (title, events) in calList)
+            {
+                yield return title; // calendar title
+
+                if (events.Count == 0)
+                {
+                    yield return "(no events)";
+                    continue;
+                }
+
+                foreach (var e in events)
+                {
+                    var start = e.Start?.DateTimeDateTimeOffset?.ToLocalTime().ToString("HH:mm") ?? e.Start?.Date ?? "";
+                    var end   = e.End?.DateTimeDateTimeOffset?.ToLocalTime().ToString("HH:mm")   ?? e.End?.Date   ?? "";
+                    var line  = $"{(e.Summary ?? "(no title)")}  -  {start}-{end}";
+                    yield return line;
+                }
+            }
+        }
+    }
+
+    private IEnumerable<string> BuildWeatherLines()
+    {
+        // width available for the middle cell (between outer ║ ... ║) in the right column rows
+        var areaWidth = InnerWidth(BoxInnerWidth) - 1;
+
+        // inner mini-box content width (between its own │ ... │)
+        var innerWidth = Math.Max(0, areaWidth - 2);
+
+        if (_cityForecasts.Count == 0)
+        {
+            // produce a single exact-width line
+            yield return CenterExact("(weather unavailable)", areaWidth);
+            yield break;
+        }
+
+        foreach (var (city, fc) in _cityForecasts)
+        {
+            // ┌────────┐
+            yield return "┌" + new string('─', innerWidth) + "┐";
+
+            // │  City  │
+            yield return "│" + CenterExact(city, innerWidth) + "│";
+
+            // ├────────┤
+            yield return "├" + new string('─', innerWidth) + "┤";
+
+            if (fc is null)
+            {
+                yield return "│" + CenterExact("(unavailable)", innerWidth) + "│";
+                yield return "└" + new string('─', innerWidth) + "┘";
+                // blank spacer line exactly areaWidth wide
+                yield return new string(' ', areaWidth);
+                continue;
+            }
+
+            var nowLine = $"Now: {fc.CurrentTemperature?.ToString("0.#") ?? "?"}°C  |  Wind: {fc.CurrentWindSpeed10m?.ToString("0.#") ?? "?"} km/h";
+            yield return "│" + CenterExact(nowLine, innerWidth) + "│";
+
+            var next = BuildHourlyLine(fc, hours: 6);   // keep it short so it fits
+            if (!string.IsNullOrWhiteSpace(next))
+                yield return "│" + CenterExact($"Next: {next}", innerWidth) + "│";
+            
+            var daily = BuildDailyLine(fc, days: 3);
+            if (!string.IsNullOrWhiteSpace(daily))
+                yield return "│" + CenterExact(daily, innerWidth) + "│";
+            // └────────┘
+            yield return "└" + new string('─', innerWidth) + "┘";
+
+            // spacer between city boxes; exact to areaWidth so no drift
+            yield return new string(' ', areaWidth);
+        }
     }
 
     private static string PadCenter(string? s, int width)
@@ -107,10 +256,6 @@
         var left = totalPad / 2 + s.Length;
         return s.PadLeft(left).PadRight(width);
     }
-
-    private Timer? _refreshTimer;
-    private readonly TimeSpan _refreshInterval = TimeSpan.FromMinutes(1);
-    private int _isRefreshing;
 
     public CalendarDashboard()
     {
@@ -126,6 +271,13 @@
         }
     }
 
+    protected override void OnInitialized()
+    {
+        // First paint: placeholders
+        _eventsBox  = BuildBox("TODAY'S EVENTS", BuildEventLines(), frameColor: "red", titleColor: "blue", bodyColor: "white");
+        _weatherBox = BuildBox("THE WEATHER FORECAST", BuildWeatherLines(), frameColor: "green", titleColor: "blue", bodyColor: "white");
+    }
+
     protected override async Task OnInitializedAsync()
     {
         await RefreshAsync();
@@ -136,16 +288,20 @@
     {
         _dateTimeNow = DateTime.Now.ToString("dd-MMM-yyyy HH:mm:ss");
         if (Interlocked.Exchange(ref _isRefreshing, 1) == 1) return;
+
         try
         {
+            // --- calendars (your existing logic) ---
             for (var i = 0; i < _buckets.Count; i++)
             {
                 var b = _buckets[i];
                 try
                 {
                     GoogleCalendarService svc;
-                    if (!string.IsNullOrEmpty(b.CredentialPath) && File.Exists(b.CredentialPath)) svc = new GoogleCalendarService(b.CredentialPath);
-                    else svc = new GoogleCalendarService();
+                    if (!string.IsNullOrEmpty(b.CredentialPath) && File.Exists(b.CredentialPath))
+                        svc = new GoogleCalendarService(b.CredentialPath);
+                    else
+                        svc = new GoogleCalendarService();
 
                     var perCal = await svc.GetTodaysEventsAllCalendarsAsync();
                     var calendarEntries = new List<(string Title, IList<Event> Events)>();
@@ -156,7 +312,8 @@
 
                     b.Events = perCal.SelectMany(x => x.Events).ToList();
                     b.Owner = svc.UserEmail ?? b.Owner;
-                    if (_perBucketCalendars.Count > i) _perBucketCalendars[i] = calendarEntries; else _perBucketCalendars.Add(calendarEntries);
+                    if (_perBucketCalendars.Count > i) _perBucketCalendars[i] = calendarEntries;
+                    else _perBucketCalendars.Add(calendarEntries);
                 }
                 catch
                 {
@@ -164,12 +321,110 @@
                 }
             }
 
+            // Fetch a forecast per city
+            _cityForecasts.Clear();
+            foreach (var (name, lat, lon) in _cities)
+            {
+                try
+                {
+                    var fc = await _weatherService.GetForecastAsync(lat, lon, ForecastDaysWx);
+                    _cityForecasts[name] = fc;
+                }
+                catch
+                {
+                    _cityForecasts[name] = null;
+                }
+            }
+
+            // After updating _perBucketCalendars and _forecast …
+            _eventsBox  = BuildBox("TODAY'S EVENTS", BuildEventLines(), frameColor: "red", titleColor: "blue", bodyColor: "white");
+            _weatherBox = BuildBox("THE WEATHER FORECAST", BuildWeatherLines(), frameColor: "green", titleColor: "blue", bodyColor: "white");
+
+            
             await InvokeAsync(StateHasChanged);
         }
         finally
         {
             Interlocked.Exchange(ref _isRefreshing, 0);
         }
+    }
+
+    private static string BuildDailyLine(WeatherForecast fc, int days = 3)
+    {
+        if (fc.DailyWeatherCode is null || fc.DailyTime is null) 
+            return string.Empty;
+
+        static string Describe(int code) => code switch
+        {
+            0 => "clear sky",
+            1 or 2 or 3 => "partly cloudy",
+            45 or 48 => "fog",
+
+            // drizzle / freezing drizzle
+            51 or 53 or 55 => "drizzle",
+            56 or 57 => "freezing drizzle",
+
+            // rain / freezing rain
+            61 or 63 or 65 => "rain",
+            66 or 67 => "freezing rain",
+
+            // snow types
+            71 or 73 or 75 => "snowfall",
+            77 => "snow grains",
+
+            // rain showers
+            80 or 81 or 82 => "rain showers",
+
+            // snow showers
+            85 or 86 => "snow showers",
+
+            // thunderstorms
+            95 => "thunderstorm",
+            96 or 99 => "thunderstorm with hail",
+
+            _ => "unknown"
+        };
+
+
+        var lines = new List<string>();
+
+        // skip day 0 (today)
+        for (int i = 1; i <= days && i < fc.DailyWeatherCode.Length; i++)
+        {
+            var desc = Describe(fc.DailyWeatherCode[i]);
+            string prefix = i switch
+            {
+                1 => "Tomorrow",
+                2 => "In 2 days",
+                3 => "In 3 days",
+                _ => $"In {i} days"
+            };
+
+            lines.Add($"{prefix}: {desc}");
+        }
+
+        return string.Join("  —  ", lines);
+    }
+
+    private string BuildHourlyLine(WeatherForecast f, int hours = 8)
+    {
+        if (f.HourlyTime is null || f.HourlyTemperature2m is null) return "(no hourly data)";
+        var now = DateTime.Now;
+        var sb = new System.Text.StringBuilder();
+        var taken = 0;
+
+        for (int i = 0; i < f.HourlyTime.Length && taken < hours; i++)
+        {
+            var t = f.HourlyTime[i];
+            if (t >= now)
+            {
+                var temp = Math.Round(f.HourlyTemperature2m[i]);
+                sb.Append($"{t:HH}:{temp:+0;-0;0}° ");
+                taken++;
+            }
+        }
+
+        return taken > 0 ? sb.ToString().TrimEnd() : "(no upcoming hours)";
     }
 
     public void Dispose()
