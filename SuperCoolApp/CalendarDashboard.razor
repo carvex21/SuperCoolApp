@@ -34,12 +34,31 @@
         @* Body *@
         @foreach (var line in BuildEventLines())
         {
+            var color = Color.White;
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                // blank spacer line (keep same color as frame)
+                color = Color.White;
+            }
+            else if (line.StartsWith("(no events", StringComparison.OrdinalIgnoreCase))
+            {
+                color = Color.Grey;
+            }
+            else if (line.Contains("@") || (!line.Contains('-') && !line.StartsWith("(")))
+            {
+                // email/calendar title line
+                color = Color.Yellow;
+            }
+
             <Columns>
                 <Markup Content="║" Foreground="@Color.Red" />
-                <Markup Content='@PadCenter(line, InnerWidth(BoxInnerWidth))' Foreground='@Color.White' />
+                <Markup Content='@PadCenter(line, InnerWidth(BoxInnerWidth))' Foreground='@color' />
                 <Markup Content="║" Foreground="@Color.Red" />
             </Columns>
         }
+
+
 
         @* Bottom *@
         <Markup Content="@($"╚{new string('═', BoxInnerWidth)}╝")" Foreground="@Color.Red" />
@@ -172,11 +191,19 @@
             yield break;
         }
 
+        var firstCalendar = true;
+
         foreach (var calList in _perBucketCalendars)
         {
             foreach (var (title, events) in calList)
             {
-                yield return title; // calendar title
+                // spacer between different calendars/emails
+                if (!firstCalendar)
+                    yield return string.Empty;
+                firstCalendar = false;
+
+                // calendar title
+                yield return title;
 
                 if (events.Count == 0)
                 {
@@ -194,6 +221,7 @@
             }
         }
     }
+
 
     private IEnumerable<string> BuildWeatherLines()
     {

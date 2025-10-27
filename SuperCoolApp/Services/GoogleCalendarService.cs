@@ -147,27 +147,6 @@ namespace SuperCoolApp.Services
             }
         }
 
-        public async Task<IList<Event>> GetTodaysEventsAsync(string calendarId = "primary", CancellationToken ct = default)
-        {
-            if (_svc == null)
-                return new List<Event>();
-
-            var startLocal = DateTime.Today;
-            var endLocal = startLocal.AddDays(1);
-            var startDto = new DateTimeOffset(startLocal, TimeZoneInfo.Local.GetUtcOffset(startLocal));
-            var endDto = new DateTimeOffset(endLocal, TimeZoneInfo.Local.GetUtcOffset(endLocal));
-
-            var req = _svc.Events.List(calendarId);
-            req.TimeMinDateTimeOffset = startDto;
-            req.TimeMaxDateTimeOffset = endDto;
-            req.ShowDeleted = false;
-            req.SingleEvents = true;
-            req.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
-
-            var resp = await req.ExecuteAsync(ct);
-            return resp.Items ?? new List<Event>();
-        }
-
         public async Task<IList<CalendarListEntry>> GetAccessibleCalendarsAsync(CancellationToken ct = default)
         {
             if (_svc == null) return new List<CalendarListEntry>();
